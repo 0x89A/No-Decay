@@ -7,18 +7,18 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.2.2")]
+    [Info("No Decay", "0x89A", "1.3.0")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
         private Configuration config;
 
-        void Init() => permission.RegisterPermission(config.usePermission, this);
+        void Init() => permission.RegisterPermission(config.General.permission, this);
 
         void Output(string text)
         {
-            if (config.General.rconOutput) Puts(text);
-            if (config.General.logToFile) LogToFile(config.General.logFileName, text, this);
+            if (config.General.Output.rconOutput) Puts(text);
+            if (config.General.Output.logToFile) LogToFile(config.General.Output.logFileName, text, this);
         }
 
         #region -Oxide Hooks-
@@ -27,42 +27,56 @@ namespace Oxide.Plugins
         {
             if (info == null || info.damageTypes == null || entity == null || !info.damageTypes.Has(Rust.DamageType.Decay)) return null;
 
-            BasePlayer player = BasePlayer.FindAwakeOrSleeping(entity.OwnerID.ToString());
-            if (config.General.usePermission && entity.OwnerID != 0UL && (player != null && !permission.UserHasPermission(player.UserIDString, config.usePermission)))
+            if (config.General.usePermission && entity.OwnerID != 0UL)
             {
-                Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"{player.displayName} ({player.userID})"));
-                return null;
-            }
-            
-            if (config.General.requireTC && (entity.GetBuildingPrivilege() == null || Vector3.Distance(entity.CenterPoint(), entity.GetBuildingPrivilege().CenterPoint()) > config.General.cupboardRange))
-            {
-                Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", entity.ShortPrefabName));
-                return null;
+                BasePlayer player = BasePlayer.FindAwakeOrSleeping(entity.OwnerID.ToString());
+                if (player != null && !permission.UserHasPermission(player.UserIDString, config.General.permission))
+                {
+                    Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"{player.displayName} ({player.userID})"));
+                    return null;
+                }
             }
 
-            if (config.General.disableAll) return true;
+            if (config.General.CupboardSettings.requireTC)
+            {
+                RaycastHit[] hits = null;
+                BuildingPrivlidge priv = entity.GetBuildingPrivilege();
+                if (priv == null) hits = Physics.SphereCastAll(entity.CenterPoint(), config.General.CupboardSettings.cupboardRange, entity.transform.forward);
+
+                if (priv == null && !AnyToolCupboards(hits))
+                {
+                    Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", entity.ShortPrefabName));
+                    return null;
+                }
+            }
 
             if (entity is BuildingBlock)
             {
                 BuildingBlock block = entity as BuildingBlock;
                 info.damageTypes.ScaleAll(config.buildingMultipliers[(int)block.grade]);
 
+                Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
+                
                 if (!info.hasDamage) return true;
 
-                Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                 return null;
             }
 
             string matchingType = null;
-
             if (config.multipliers.ContainsKey(entity.ShortPrefabName) || IsOfType(entity, out matchingType))
             {
-                info.damageTypes.ScaleAll(config.multipliers[matchingType != null ? matchingType : entity.ShortPrefabName]);
+                if (config.General.excludeOthers) return null;
+                else
+                {
+                    info.damageTypes.ScaleAll(config.multipliers[matchingType != null ? matchingType : entity.ShortPrefabName]);
 
-                if (!info.hasDamage) return true;
+                    Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
 
-                Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
+                    if (!info.hasDamage) return true;
+                }
             }
+
+            if (config.General.disableAll) return true;
 
             return null;
         }
@@ -75,23 +89,23 @@ namespace Oxide.Plugins
 
             bool flag = false;
 
-            //rip target-type conditional expression, fuck C# 7.3, 9.0 the move
+            //rip target-type conditional expression, fuck C# 7, 9.0 the move
             switch (item.info.shortname)
             {
                 case "wood":
-                    if (config.General.blockWood) flag = true;
+                    if (config.General.CupboardSettings.blockWood) flag = true;
                     break;
 
                 case "stones":
-                    if (config.General.blockStone) flag = true;
+                    if (config.General.CupboardSettings.blockStone) flag = true;
                     break;
 
                 case "metal.fragments":
-                    if (config.General.blockMetal) flag = true;
+                    if (config.General.CupboardSettings.blockMetal) flag = true;
                     break;
 
                 case "metal.refined":
-                    if (config.General.blockHighQ) flag = true;
+                    if (config.General.CupboardSettings.blockHighQ) flag = true;
                     break;
             }
 
@@ -110,11 +124,23 @@ namespace Oxide.Plugins
 
             foreach (var pair in config.multipliers)
             {
-                if (pair.Key == entity.GetType().FullName)
+                if (pair.Key == entity.GetType().Name)
                 {
                     matchingType = pair.Key;
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        private bool AnyToolCupboards(RaycastHit[] array)
+        {
+            foreach (RaycastHit hit in array)
+            {
+                BaseEntity entity = hit.GetEntity();
+                if (entity is BuildingPrivlidge)
+                    return true;
             }
 
             return false;
@@ -135,9 +161,6 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Other multipliers")]
             public Dictionary<string, float> multipliers = new Dictionary<string, float>();
 
-            [JsonProperty(PropertyName = "Use permission")]
-            public string usePermission = "nodecay.use";
-
             #region -Classes-
 
             public class GeneralSettings
@@ -145,35 +168,56 @@ namespace Oxide.Plugins
                 [JsonProperty(PropertyName = "Disable decay for all entities")]
                 public bool disableAll = false;
 
+                [JsonProperty(PropertyName = "Exclude \"Other Multipliers\"")]
+                public bool excludeOthers = false;
+
                 [JsonProperty(PropertyName = "Use permission")]
                 public bool usePermission = true;
 
-                [JsonProperty(PropertyName = "Output to server console")]
-                public bool rconOutput = false;
+                [JsonProperty(PropertyName = "Permission")]
+                public string permission = "nodecay.use";
 
-                [JsonProperty(PropertyName = "Log to file")]
-                public bool logToFile = true;
+                [JsonProperty(PropertyName = "Output")]
+                public OutputClass Output = new OutputClass();
 
-                [JsonProperty(PropertyName = "Log file name")]
-                public string logFileName = "NoDecay-Log";
+                [JsonProperty(PropertyName = "Cupboard Settings")]
+                public CupboardSettingsClass CupboardSettings = new CupboardSettingsClass();
 
-                [JsonProperty(PropertyName = "Require Tool Cupboard")]
-                public bool requireTC = false;
+                public class OutputClass
+                {
+                    [JsonProperty(PropertyName = "Output to server console")]
+                    public bool rconOutput = false;
 
-                [JsonProperty(PropertyName = "Cupboard Range")]
-                public float cupboardRange = 30f;
+                    [JsonProperty(PropertyName = "Log to file")]
+                    public bool logToFile = true;
 
-                [JsonProperty(PropertyName = "Block cupboard wood")]
-                public bool blockWood = false;
+                    [JsonProperty(PropertyName = "Log file name")]
+                    public string logFileName = "NoDecay-Log";
+                }
 
-                [JsonProperty(PropertyName = "Block cupboard stone")]
-                public bool blockStone = false;
+                public class CupboardSettingsClass
+                {
+                    [JsonProperty(PropertyName = "Disable No Decay if resources placed in TC")]
+                    public bool disableOnResources = false;
 
-                [JsonProperty(PropertyName = "Block cupbard metal")]
-                public bool blockMetal = false;
+                    [JsonProperty(PropertyName = "Require Tool Cupboard")]
+                    public bool requireTC = false;
 
-                [JsonProperty(PropertyName = "Block cupboard high quality")]
-                public bool blockHighQ = false;
+                    [JsonProperty(PropertyName = "Cupboard Range")]
+                    public float cupboardRange = 30f;
+
+                    [JsonProperty(PropertyName = "Block cupboard wood")]
+                    public bool blockWood = false;
+
+                    [JsonProperty(PropertyName = "Block cupboard stone")]
+                    public bool blockStone = false;
+
+                    [JsonProperty(PropertyName = "Block cupbard metal")]
+                    public bool blockMetal = false;
+
+                    [JsonProperty(PropertyName = "Block cupboard high quality")]
+                    public bool blockHighQ = false;
+                }
             }
 
             public class TierMultipliers
