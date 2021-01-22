@@ -1,19 +1,29 @@
 ﻿using System;
 using System.Collections.Generic;
 
+using Oxide.Core.Libraries.Covalence;
+
 using UnityEngine;
 
 using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.3.0")]
+    [Info("No Decay", "0x89A", "1.3.1")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
         private Configuration config;
 
+        private List<BuildingPrivlidge> toolCupboards = new List<BuildingPrivlidge>();
+
         void Init() => permission.RegisterPermission(config.General.permission, this);
+
+        void OnServerInitialized()
+        {
+            foreach (BaseNetworkable networkable in BaseNetworkable.serverEntities)
+                if (networkable is BuildingPrivlidge) toolCupboards.Add(networkable as BuildingPrivlidge);
+        }
 
         void Output(string text)
         {
@@ -39,13 +49,11 @@ namespace Oxide.Plugins
 
             if (config.General.CupboardSettings.requireTC)
             {
-                RaycastHit[] hits = null;
                 BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-                if (priv == null) hits = Physics.SphereCastAll(entity.CenterPoint(), config.General.CupboardSettings.cupboardRange, entity.transform.forward);
 
-                if (priv == null && !AnyToolCupboards(hits))
+                if (priv == null && !AnyToolCupboards(entity))
                 {
-                    Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", entity.ShortPrefabName));
+                    Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                     return null;
                 }
             }
@@ -118,6 +126,13 @@ namespace Oxide.Plugins
             return null;
         }
 
+        void OnEntitySpawned(BuildingPrivlidge priv) => toolCupboards.Add(priv);
+
+        void OnEntityKill(BuildingPrivlidge priv)
+        {
+            if (toolCupboards.Contains(priv)) toolCupboards.Remove(priv);
+        }
+
         private bool IsOfType(BaseCombatEntity entity, out string matchingType)
         {
             matchingType = null;
@@ -134,12 +149,14 @@ namespace Oxide.Plugins
             return false;
         }
 
-        private bool AnyToolCupboards(RaycastHit[] array)
+        private bool AnyToolCupboards(BaseEntity entity)
         {
-            foreach (RaycastHit hit in array)
+            for (int i = 0; i < toolCupboards.Count; i++)
             {
-                BaseEntity entity = hit.GetEntity();
-                if (entity is BuildingPrivlidge)
+                if (toolCupboards[i] == null) continue;
+                Vector3 cupboardPos = toolCupboards[i].transform.position;
+
+                if (Vector3.Distance(cupboardPos, entity.ClosestPoint(cupboardPos)) <= config.General.CupboardSettings.cupboardRange)
                     return true;
             }
 
