@@ -9,7 +9,7 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.3.1")]
+    [Info("No Decay", "0x89A", "1.3.2")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
@@ -151,14 +151,10 @@ namespace Oxide.Plugins
 
         private bool AnyToolCupboards(BaseEntity entity)
         {
-            for (int i = 0; i < toolCupboards.Count; i++)
-            {
-                if (toolCupboards[i] == null) continue;
-                Vector3 cupboardPos = toolCupboards[i].transform.position;
+            List<BuildingPrivlidge> privList = new List<BuildingPrivlidge>();
+            Vis.Entities(entity.transform.position, config.General.CupboardSettings.cupboardRange, privList, LayerMask.GetMask(new string[] { "Deployed" }));
 
-                if (Vector3.Distance(cupboardPos, entity.ClosestPoint(cupboardPos)) <= config.General.CupboardSettings.cupboardRange)
-                    return true;
-            }
+            if (privList.Count >= 1) return true;
 
             return false;
         }
