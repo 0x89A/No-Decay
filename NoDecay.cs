@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-using Oxide.Core.Libraries.Covalence;
+using Rust;
 
 using UnityEngine;
 
@@ -9,21 +9,15 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.3.2")]
+    [Info("No Decay", "0x89A", "1.4.2")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
         private Configuration config;
 
-        private List<BuildingPrivlidge> toolCupboards = new List<BuildingPrivlidge>();
+        public bool doOutput => config.General.Output.logToFile || config.General.Output.rconOutput;
 
         void Init() => permission.RegisterPermission(config.General.permission, this);
-
-        void OnServerInitialized()
-        {
-            foreach (BaseNetworkable networkable in BaseNetworkable.serverEntities)
-                if (networkable is BuildingPrivlidge) toolCupboards.Add(networkable as BuildingPrivlidge);
-        }
 
         void Output(string text)
         {
@@ -33,38 +27,30 @@ namespace Oxide.Plugins
 
         #region -Oxide Hooks-
 
-        object OnEntityTakeDamage(BaseCombatEntity entity, HitInfo info)
+        object OnEntityTakeDamage(DecayEntity entity, HitInfo info)
         {
             if (info == null || info.damageTypes == null || entity == null || !info.damageTypes.Has(Rust.DamageType.Decay)) return null;
 
-            if (config.General.usePermission && entity.OwnerID != 0UL)
+            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
+
+            if (config.General.usePermission && !permission.UserHasPermission(priv == null ? entity.OwnerID.ToString() : GetOwnerPlayer(priv, entity.OwnerID), config.General.permission))
             {
-                BasePlayer player = BasePlayer.FindAwakeOrSleeping(entity.OwnerID.ToString());
-                if (player != null && !permission.UserHasPermission(player.UserIDString, config.General.permission))
-                {
-                    Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"{player.displayName} ({player.userID})"));
-                    return null;
-                }
+                if (doOutput) Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"({entity.OwnerID})"));
+                
+                return null;
             }
 
-            if (config.General.CupboardSettings.requireTC)
+            if (config.General.CupboardSettings.requireTC && !AnyToolCupboards(entity))
             {
-                BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-
-                if (priv == null && !AnyToolCupboards(entity))
-                {
-                    Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
-                    return null;
-                }
+                if (doOutput) Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
+                return null;
             }
 
             if (entity is BuildingBlock)
             {
-                BuildingBlock block = entity as BuildingBlock;
-                info.damageTypes.ScaleAll(config.buildingMultipliers[(int)block.grade]);
+                info.damageTypes.ScaleAll(config.buildingMultipliers[(int)((BuildingBlock)entity).grade]);
 
-                Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
-                
+                if (doOutput) Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                 if (!info.hasDamage) return true;
 
                 return null;
@@ -78,8 +64,7 @@ namespace Oxide.Plugins
                 {
                     info.damageTypes.ScaleAll(config.multipliers[matchingType != null ? matchingType : entity.ShortPrefabName]);
 
-                    Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
-
+                    if (doOutput) Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                     if (!info.hasDamage) return true;
                 }
             }
@@ -126,13 +111,6 @@ namespace Oxide.Plugins
             return null;
         }
 
-        void OnEntitySpawned(BuildingPrivlidge priv) => toolCupboards.Add(priv);
-
-        void OnEntityKill(BuildingPrivlidge priv)
-        {
-            if (toolCupboards.Contains(priv)) toolCupboards.Remove(priv);
-        }
-
         private bool IsOfType(BaseCombatEntity entity, out string matchingType)
         {
             matchingType = null;
@@ -151,12 +129,52 @@ namespace Oxide.Plugins
 
         private bool AnyToolCupboards(BaseEntity entity)
         {
-            List<BuildingPrivlidge> privList = new List<BuildingPrivlidge>();
-            Vis.Entities(entity.transform.position, config.General.CupboardSettings.cupboardRange, privList, LayerMask.GetMask(new string[] { "Deployed" }));
+            if (entity is BuildingBlock)
+            {
+                BuildingBlock block = (BuildingBlock)entity;
 
-            if (privList.Count >= 1) return true;
+                BuildingManager.Building building = block.GetBuilding();
+                if (building != null && building.GetDominatingBuildingPrivilege() != null)
+                    return true;
+            }
+
+            Collider[] hits = Physics.OverlapSphere(entity.transform.position, config.General.CupboardSettings.cupboardRange, Layers.Mask.Deployed);
+
+            if (hits.Length > 0)
+            {
+                for (int i = 0; i < hits.Length; i++)
+                {
+                    if (hits[i].ToBaseEntity() is BuildingPrivlidge)
+                        return true;
+                }
+            }
 
             return false;
+        }
+
+        private string GetOwnerPlayer(BuildingPrivlidge priv, ulong id = 0UL)
+        {
+            if (!priv.AnyAuthed()) return null;
+
+            if (config.General.CupboardSettings.anyAuthed)
+            {
+                for (int i = 0; i < priv.authorizedPlayers.Count; i++)
+                {
+                    var player = priv.authorizedPlayers[i];
+
+                    if (permission.UserHasPermission(player.userid.ToString(), config.General.permission))
+                        return player.userid.ToString();
+                }
+            }
+            else
+            {
+                var player = priv.authorizedPlayers.Find(x => x.userid == id);
+
+                if (player != null)
+                    return player.userid.ToString();
+            }
+
+            return null;
         }
 
         #endregion
@@ -215,6 +233,9 @@ namespace Oxide.Plugins
 
                     [JsonProperty(PropertyName = "Require Tool Cupboard")]
                     public bool requireTC = false;
+
+                    [JsonProperty(PropertyName = "Any authed on TC")]
+                    public bool anyAuthed = false;
 
                     [JsonProperty(PropertyName = "Cupboard Range")]
                     public float cupboardRange = 30f;
