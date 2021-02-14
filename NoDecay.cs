@@ -9,13 +9,11 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.4.2")]
+    [Info("No Decay", "0x89A", "1.4.3")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
         private Configuration config;
-
-        public bool doOutput => config.General.Output.logToFile || config.General.Output.rconOutput;
 
         void Init() => permission.RegisterPermission(config.General.permission, this);
 
@@ -27,22 +25,22 @@ namespace Oxide.Plugins
 
         #region -Oxide Hooks-
 
-        object OnEntityTakeDamage(DecayEntity entity, HitInfo info)
+        object OnEntityTakeDamage(BaseCombatEntity entity, HitInfo info)
         {
-            if (info == null || info.damageTypes == null || entity == null || !info.damageTypes.Has(Rust.DamageType.Decay)) return null;
+            if (info == null || info.damageTypes == null || entity == null || !info.damageTypes.Has(DamageType.Decay)) return null;
 
             BuildingPrivlidge priv = entity.GetBuildingPrivilege();
 
             if (config.General.usePermission && !permission.UserHasPermission(priv == null ? entity.OwnerID.ToString() : GetOwnerPlayer(priv, entity.OwnerID), config.General.permission))
             {
-                if (doOutput) Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"({entity.OwnerID})"));
+                Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"({entity.OwnerID})"));
                 
                 return null;
             }
 
             if (config.General.CupboardSettings.requireTC && !AnyToolCupboards(entity))
             {
-                if (doOutput) Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
+                Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                 return null;
             }
 
@@ -50,7 +48,7 @@ namespace Oxide.Plugins
             {
                 info.damageTypes.ScaleAll(config.buildingMultipliers[(int)((BuildingBlock)entity).grade]);
 
-                if (doOutput) Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
+                Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                 if (!info.hasDamage) return true;
 
                 return null;
@@ -64,7 +62,7 @@ namespace Oxide.Plugins
                 {
                     info.damageTypes.ScaleAll(config.multipliers[matchingType != null ? matchingType : entity.ShortPrefabName]);
 
-                    if (doOutput) Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
+                    Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                     if (!info.hasDamage) return true;
                 }
             }
