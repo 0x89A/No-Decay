@@ -9,7 +9,7 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.4.3")]
+    [Info("No Decay", "0x89A", "1.4.4")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
@@ -115,7 +115,7 @@ namespace Oxide.Plugins
 
             foreach (var pair in config.multipliers)
             {
-                if (pair.Key == entity.GetType().Name)
+                if (pair.Key == entity.GetType()?.Name)
                 {
                     matchingType = pair.Key;
                     return true;
@@ -131,7 +131,7 @@ namespace Oxide.Plugins
             {
                 BuildingBlock block = (BuildingBlock)entity;
 
-                BuildingManager.Building building = block.GetBuilding();
+                BuildingManager.Building building = block?.GetBuilding();
                 if (building != null && building.GetDominatingBuildingPrivilege() != null)
                     return true;
             }
@@ -142,7 +142,7 @@ namespace Oxide.Plugins
             {
                 for (int i = 0; i < hits.Length; i++)
                 {
-                    if (hits[i].ToBaseEntity() is BuildingPrivlidge)
+                    if (hits[i]?.ToBaseEntity() is BuildingPrivlidge)
                         return true;
                 }
             }
@@ -152,7 +152,7 @@ namespace Oxide.Plugins
 
         private string GetOwnerPlayer(BuildingPrivlidge priv, ulong id = 0UL)
         {
-            if (!priv.AnyAuthed()) return null;
+            if (priv == null || !priv.AnyAuthed()) return null;
 
             if (config.General.CupboardSettings.anyAuthed)
             {
@@ -160,7 +160,7 @@ namespace Oxide.Plugins
                 {
                     var player = priv.authorizedPlayers[i];
 
-                    if (permission.UserHasPermission(player.userid.ToString(), config.General.permission))
+                    if (player != null && permission.UserHasPermission(player.userid.ToString(), config.General.permission))
                         return player.userid.ToString();
                 }
             }
