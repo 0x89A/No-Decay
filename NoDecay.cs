@@ -9,7 +9,7 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.4.4")]
+    [Info("No Decay", "0x89A", "1.4.5")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
@@ -152,7 +152,7 @@ namespace Oxide.Plugins
 
         private string GetOwnerPlayer(BuildingPrivlidge priv, ulong id = 0UL)
         {
-            if (priv == null || !priv.AnyAuthed()) return null;
+            if (priv == null || !priv.AnyAuthed()) return string.Empty;
 
             if (config.General.CupboardSettings.anyAuthed)
             {
@@ -172,7 +172,7 @@ namespace Oxide.Plugins
                     return player.userid.ToString();
             }
 
-            return null;
+            return string.Empty;
         }
 
         #endregion
