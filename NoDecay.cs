@@ -9,7 +9,7 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.4.5")]
+    [Info("No Decay", "0x89A", "1.4.6")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : CovalencePlugin
     {
@@ -31,12 +31,13 @@ namespace Oxide.Plugins
 
             BuildingPrivlidge priv = entity.GetBuildingPrivilege();
 
-            if (config.General.usePermission && !permission.UserHasPermission(priv == null ? entity.OwnerID.ToString() : GetOwnerPlayer(priv, entity.OwnerID), config.General.permission))
+            if (config.General.usePermission && entity.OwnerID != 0 && !permission.UserHasPermission(priv == null ? entity.OwnerID.ToString() : GetOwnerPlayer(priv, entity.OwnerID), config.General.permission))
             {
                 Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"({entity.OwnerID})"));
-                
+
                 return null;
             }
+            else if (config.General.usePermission && !config.General.decayNoOwner && entity.OwnerID == 0) return true;
 
             if (config.General.CupboardSettings.requireTC && !AnyToolCupboards(entity))
             {
@@ -202,6 +203,9 @@ namespace Oxide.Plugins
 
                 [JsonProperty(PropertyName = "Use permission")]
                 public bool usePermission = true;
+
+                [JsonProperty(PropertyName = "Decay if there is no owner (and perms enabled)")]
+                public bool decayNoOwner = false;
 
                 [JsonProperty(PropertyName = "Permission")]
                 public string permission = "nodecay.use";
