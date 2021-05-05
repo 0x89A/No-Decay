@@ -44,6 +44,7 @@
 *  **Disable decay for all entities** - Is decay damage disabled for all entities.
 *  **Exclude \"Other Multipliers\"** - Will make all entities entered in Other Multipliers exempt from the plugins effects (will decay).
 *  **Use permission** - Do players require the permission for decay multipliers to be applied to their owned entities.
+*  **Decay if there is no owner** - If permissions are enabled, do entities without an owner decay as normal or not.
 *  **Output to server console** - Does the plugin output information about its operation to the server console.
 *  **Log to file** - Does the plugin output information about its operation to a data file.
 *  **Log file name** - The file name that the plugin outputs to.
