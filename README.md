@@ -8,6 +8,7 @@
     "Disable decay for all entities": false,
     "Exclude \"Other Multipliers\"": false,
     "Use permission": false,
+    "Decay if there is no owner (if perms enabled)": false,
     "Permission": "nodecay.use",
     "Output": {
       "Output to server console": false,
