@@ -42,7 +42,7 @@
  
  ### General
  
-*  **Disable decay for all entities** - Is decay damage disabled for all entities.
+*  **Disable decay for all entities** - Is decay damage disabled for all entities (Will be overriden by other conditions, this just removes the need to list things in "other multipliers").
 *  **Exclude \"Other Multipliers\"** - Will make all entities entered in Other Multipliers exempt from the plugins effects (will decay).
 *  **Use permission** - Do players require the permission for decay multipliers to be applied to their owned entities.
 *  **Decay if there is no owner** - If permissions are enabled, do entities without an owner decay as normal or not.
