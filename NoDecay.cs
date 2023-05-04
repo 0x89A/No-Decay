@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-
 using Rust;
 
 using UnityEngine;
@@ -9,71 +8,121 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.4.6")]
+    [Info("No Decay", "0x89A", "1.4.7")]
     [Description("Scales or disables decay of items and deployables")]
-    class NoDecay : CovalencePlugin
+    class NoDecay : RustPlugin
     {
-        private Configuration config;
+        private Configuration _config;
 
-        void Init() => permission.RegisterPermission(config.General.permission, this);
+        private readonly Dictionary<BaseCombatEntity, BuildingPrivlidge> _cachedPriviledges = new Dictionary<BaseCombatEntity, BuildingPrivlidge>();
+
+        void Init() => permission.RegisterPermission(_config.General.permission, this);
 
         void Output(string text)
         {
-            if (config.General.Output.rconOutput) Puts(text);
-            if (config.General.Output.logToFile) LogToFile(config.General.Output.logFileName, text, this);
+            if (_config.General.Output.rconOutput) Puts(text);
+            if (_config.General.Output.logToFile) LogToFile(_config.General.Output.logFileName, text, this);
         }
 
         #region -Oxide Hooks-
 
         object OnEntityTakeDamage(BaseCombatEntity entity, HitInfo info)
         {
-            if (info == null || info.damageTypes == null || entity == null || !info.damageTypes.Has(DamageType.Decay)) return null;
-
-            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-
-            if (config.General.usePermission && entity.OwnerID != 0 && !permission.UserHasPermission(priv == null ? entity.OwnerID.ToString() : GetOwnerPlayer(priv, entity.OwnerID), config.General.permission))
+            if (info?.damageTypes == null || entity == null || !info.damageTypes.Has(DamageType.Decay))
             {
-                Output(lang.GetMessage("NoPermission", this).Replace("{0}", $"({entity.OwnerID})"));
-
-                return null;
-            }
-            else if (config.General.usePermission && !config.General.decayNoOwner && entity.OwnerID == 0) return true;
-
-            if (config.General.CupboardSettings.requireTC && !AnyToolCupboards(entity))
-            {
-                Output(lang.GetMessage("OutOfRange", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
                 return null;
             }
 
-            if (entity is BuildingBlock)
+            //Get tool cupboard
+            BuildingPrivlidge priv;
+            if (!_cachedPriviledges.TryGetValue(entity, out priv) || priv == null)
             {
-                info.damageTypes.ScaleAll(config.buildingMultipliers[(int)((BuildingBlock)entity).grade]);
+                priv = entity.GetBuildingPrivilege();
+                _cachedPriviledges[entity] = priv;
+            }
 
-                Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
-                if (!info.hasDamage) return true;
+            if (_config.General.usePermission && entity.OwnerID != 0 && !permission.UserHasPermission(priv == null ? entity.OwnerID.ToString() : GetOwnerPlayer(priv, entity.OwnerID), _config.General.permission))
+            {
+                Output(string.Format(lang.GetMessage("NoPermission", this), entity.OwnerID));
+                return null;
+            }
+
+            //Block decaying if the entity has no owner player
+            if (_config.General.usePermission && !_config.General.decayNoOwner && entity.OwnerID == 0)
+            {
+                return true;
+            }
+
+            if (_config.General.usePermission)
+            {
+                string userId = priv == null ? entity.OwnerID.ToString() : GetOwnerPlayer(priv, entity.OwnerID);
+                
+                //Continue decaying if player does not have permission
+                if (entity.OwnerID != 0 && !permission.UserHasPermission(userId, _config.General.permission))
+                {
+                    Output(string.Format(lang.GetMessage("NoPermission", this), entity.OwnerID));
+                    return null;
+                }
+
+                //Block decaying if the entity has no owner player
+                if (!_config.General.decayNoOwner && entity.OwnerID == 0)
+                {
+                    return true;
+                }
+            }
+
+            //Don't scale damage if out of range of a tool cupboard
+            if (_config.General.CupboardSettings.requireTC && !AnyToolCupboards(entity))
+            {
+                Output(string.Format(lang.GetMessage("OutOfRange", this), entity.ShortPrefabName, entity.transform.position));
+                return null;
+            }
+
+            //Scale damage for building blocks
+            BuildingBlock block = entity as BuildingBlock;
+            if (block != null)
+            {
+                info.damageTypes.ScaleAll(_config.buildingMultipliers[(int)block.grade]);
+
+                Output(string.Format(lang.GetMessage("DecayBlocked", this), block.ShortPrefabName, block.transform.position));
+                
+                //Prevent repair cooldown if no decay damage is done
+                if (!info.hasDamage)
+                {
+                    return true;
+                }
 
                 return null;
             }
 
             string matchingType = null;
-            if (config.multipliers.ContainsKey(entity.ShortPrefabName) || IsOfType(entity, out matchingType))
+            if (_config.multipliers.ContainsKey(entity.ShortPrefabName) || IsOfType(entity, out matchingType))
             {
-                if (config.General.excludeOthers) return null;
-                else
+                if (_config.General.excludeOthers)
                 {
-                    info.damageTypes.ScaleAll(config.multipliers[matchingType != null ? matchingType : entity.ShortPrefabName]);
+                    return null;
+                }
+                
+                info.damageTypes.ScaleAll(_config.multipliers[matchingType ?? entity.ShortPrefabName]);
 
-                    Output(lang.GetMessage("DecayBlocked", this).Replace("{0}", entity.ShortPrefabName).Replace("{1}", $"{entity.transform.position}"));
-                    if (!info.hasDamage) return true;
+                Output(string.Format(lang.GetMessage("DecayBlocked", this), entity.ShortPrefabName, entity.transform.position));
+                    
+                //Prevent repair cooldown if no decay damage is done
+                if (!info.hasDamage)
+                {
+                    return true;
                 }
             }
 
-            if (config.General.disableAll) return true;
-
+            if (_config.General.disableAll)
+            {
+                return true;
+            }
+            
             return null;
         }
 
-        object CanMoveItem(Item item, PlayerInventory playerLoot, uint targetContainer, int targetSlot, int amount)
+        private object CanMoveItem(Item item, PlayerInventory playerLoot, ItemContainerId targetContainer, int targetSlot, int amount)
         {
             BaseEntity entity = playerLoot.FindContainer(targetContainer)?.entityOwner;
 
@@ -81,24 +130,47 @@ namespace Oxide.Plugins
 
             bool flag = false;
 
-            //rip target-type conditional expression, fuck C# 7, 9.0 the move
             switch (item.info.shortname)
             {
                 case "wood":
-                    if (config.General.CupboardSettings.blockWood) flag = true;
+                {
+                    if (_config.General.CupboardSettings.blockWood)
+                    {
+                        flag = true;
+                    }
+
                     break;
+                }
 
                 case "stones":
-                    if (config.General.CupboardSettings.blockStone) flag = true;
+                {
+                    if (_config.General.CupboardSettings.blockStone)
+                    {
+                        flag = true;
+                    }
+
                     break;
+                }
 
                 case "metal.fragments":
-                    if (config.General.CupboardSettings.blockMetal) flag = true;
+                {
+                    if (_config.General.CupboardSettings.blockMetal)
+                    {
+                        flag = true;
+                    }
+                    
                     break;
+                }
 
                 case "metal.refined":
-                    if (config.General.CupboardSettings.blockHighQ) flag = true;
+                {
+                    if (_config.General.CupboardSettings.blockHighQ)
+                    {
+                        flag = true;
+                    }
+
                     break;
+                }
             }
 
             if (flag)
@@ -114,7 +186,7 @@ namespace Oxide.Plugins
         {
             matchingType = null;
 
-            foreach (var pair in config.multipliers)
+            foreach (var pair in _config.multipliers)
             {
                 if (pair.Key == entity.GetType()?.Name)
                 {
@@ -137,7 +209,7 @@ namespace Oxide.Plugins
                     return true;
             }
 
-            Collider[] hits = Physics.OverlapSphere(entity.transform.position, config.General.CupboardSettings.cupboardRange, Layers.Mask.Deployed);
+            Collider[] hits = Physics.OverlapSphere(entity.transform.position, _config.General.CupboardSettings.cupboardRange, Layers.Mask.Deployed);
 
             if (hits.Length > 0)
             {
@@ -155,13 +227,13 @@ namespace Oxide.Plugins
         {
             if (priv == null || !priv.AnyAuthed()) return string.Empty;
 
-            if (config.General.CupboardSettings.anyAuthed)
+            if (_config.General.CupboardSettings.anyAuthed)
             {
                 for (int i = 0; i < priv.authorizedPlayers.Count; i++)
                 {
                     var player = priv.authorizedPlayers[i];
 
-                    if (player != null && permission.UserHasPermission(player.userid.ToString(), config.General.permission))
+                    if (player != null && permission.UserHasPermission(player.userid.ToString(), _config.General.permission))
                         return player.userid.ToString();
                 }
             }
@@ -285,9 +357,9 @@ namespace Oxide.Plugins
             base.LoadConfig();
             try
             {
-                config = Config.ReadObject<Configuration>();
-                if (config == null) throw new Exception();
-                config.buildingMultipliers = new float[5] { config.BuildingTiers.twig, config.BuildingTiers.wood, config.BuildingTiers.stone, config.BuildingTiers.metal, config.BuildingTiers.armoured };
+                _config = Config.ReadObject<Configuration>();
+                if (_config == null) throw new Exception();
+                _config.buildingMultipliers = new float[5] { _config.BuildingTiers.twig, _config.BuildingTiers.wood, _config.BuildingTiers.stone, _config.BuildingTiers.metal, _config.BuildingTiers.armoured };
                 SaveConfig();
             }
             catch
@@ -297,9 +369,9 @@ namespace Oxide.Plugins
             }
         }
 
-        protected override void LoadDefaultConfig() => config = new Configuration();
+        protected override void LoadDefaultConfig() => _config = new Configuration();
 
-        protected override void SaveConfig() => Config.WriteObject(config);
+        protected override void SaveConfig() => Config.WriteObject(_config);
 
         #endregion -Configuration-
 
