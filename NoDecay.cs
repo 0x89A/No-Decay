@@ -5,10 +5,11 @@ using Rust;
 using UnityEngine;
 
 using Newtonsoft.Json;
+using ProtoBuf;
 
 namespace Oxide.Plugins
 {
-    [Info("No Decay", "0x89A", "1.4.7")]
+    [Info("No Decay", "0x89A", "1.4.8")]
     [Description("Scales or disables decay of items and deployables")]
     class NoDecay : RustPlugin
     {
@@ -229,20 +230,38 @@ namespace Oxide.Plugins
 
             if (_config.General.CupboardSettings.anyAuthed)
             {
-                for (int i = 0; i < priv.authorizedPlayers.Count; i++)
+                foreach (PlayerNameID player in priv.authorizedPlayers)
                 {
-                    var player = priv.authorizedPlayers[i];
-
-                    if (player != null && permission.UserHasPermission(player.userid.ToString(), _config.General.permission))
-                        return player.userid.ToString();
+                    if (player == null)
+                    {
+                        continue;
+                    }
+                    
+                    string userId = player.userid.ToString();
+                    
+                    if (permission.UserHasPermission(userId, _config.General.permission))
+                    {
+                        return userId;
+                    }
                 }
             }
             else
             {
-                var player = priv.authorizedPlayers.Find(x => x.userid == id);
+                PlayerNameID targetPlayer = null;
 
-                if (player != null)
-                    return player.userid.ToString();
+                foreach (PlayerNameID player in priv.authorizedPlayers)
+                {
+                    if (player.userid != id)
+                    {
+                        continue;
+                    }
+
+                    targetPlayer = player;
+                    break;
+                }
+                
+                if (targetPlayer != null)
+                    return targetPlayer.userid.ToString();
             }
 
             return string.Empty;
