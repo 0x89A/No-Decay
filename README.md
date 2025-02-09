@@ -8,16 +8,16 @@
     "Disable decay for all entities": false,
     "Exclude \"Other Multipliers\"": false,
     "Use permission": false,
-    "Decay if there is no owner (if perms enabled)": false,
+    "Decay if there is no owner (and perms enabled)": false,
     "Permission": "nodecay.use",
     "Output": {
       "Output to server console": false,
-      "Log to file": false,
+      "Log to file": true,
       "Log file name": "NoDecay-Log"
     },
     "Cupboard Settings": {
       "Disable No Decay if resources placed in TC": false,
-      "Require Tool Cupboard": true,
+      "Require Tool Cupboard": false,
       "Any authed on TC": false,
       "Cupboard Range": 30.0,
       "Block cupboard wood": false,
@@ -34,9 +34,8 @@
     "Armoured multiplier": 0.0
   },
   "Other multipliers": {
-    "shortname": 0.0
-  },
-  "Use permission": "nodecay.use"
+    "shortname": 0,
+  }
 }
 ```
  
